@@ -1,10 +1,18 @@
-# If You Give a Policy a Bit 🐭
+# If You Give a Policy a Bit
 
 If you give a policy a bit, it's going to want to learn a secret.
 
 If it wants to learn a secret, it's going to need log₂(N) bits of information.
 
 If it only gets 1 bit per episode... it's going to take O(N) episodes.
+
+
+<figure>
+  <img width="308" height="316" alt="Screenshot 2026-01-05 at 11 29 20 PM" src="https://github.com/user-attachments/assets/067289b9-d0b9-4dea-8957-f093cd63756b" />
+
+  
+  <figcaption>A few early tests of the the RL binary secret bandit</figcaption>
+</figure>
 
 ---
 
