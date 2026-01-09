@@ -132,33 +132,18 @@ class BitsKnownEvaluator(SamplingClientEvaluator):
             for inp in self._eval_inputs
         ])
 
-        # Compute bits metrics
-        bits_raw = []
+        # Compute bits known for each secret
         bits_clamped = []
-        target_logprobs = []
-
         for logprobs, eval_input in zip(all_logprobs, self._eval_inputs):
             target_logprob, _ = sum_weighted_logprobs(logprobs, eval_input.weights)
-            bits_known_raw, bits_known_clamped = compute_bits_known(
-                target_logprob, self._N
-            )
-            bits_raw.append(bits_known_raw)
+            _, bits_known_clamped = compute_bits_known(target_logprob, self._N)
             bits_clamped.append(bits_known_clamped)
-            target_logprobs.append(target_logprob)
 
-        bits_raw_arr = np.array(bits_raw, dtype=float)
         bits_clamped_arr = np.array(bits_clamped, dtype=float)
-        target_logprob_arr = np.array(target_logprobs, dtype=float)
 
         prefix = self._metric_prefix
         return {
-            f"{prefix}/known_raw_mean": float(bits_raw_arr.mean()),
-            f"{prefix}/known_raw_std": float(bits_raw_arr.std()),
-            f"{prefix}/known_clamped_mean": float(bits_clamped_arr.mean()),
-            f"{prefix}/known_clamped_std": float(bits_clamped_arr.std()),
-            f"{prefix}/target_logprob_mean": float(target_logprob_arr.mean()),
-            f"{prefix}/target_logprob_std": float(target_logprob_arr.std()),
-            f"{prefix}/num_unique_secrets": float(len(self._eval_inputs)),
+            f"{prefix}/known": float(bits_clamped_arr.mean()),
         }
 
     @classmethod
@@ -246,38 +231,26 @@ class _AsyncBitsKnownEvaluator(SamplingClientEvaluator):
         self._builder = builder
         # State for computing effective rate
         self._prev_bits_known: float | None = None
-        self._eval_count: int = 0
 
     async def __call__(self, sampling_client: tinker.SamplingClient) -> dict[str, float]:
         evaluator = await self._builder._ensure_evaluator()
         metrics = await evaluator(sampling_client)
 
-        # Compute effective bits per episode (learning rate)
+        # Compute effective bits per episode (the key metric for the study)
         prefix = self._builder._metric_prefix.rstrip("/")
-        current_bits = metrics.get(f"{prefix}/known_clamped_mean", 0.0)
-        signal_bits = math.log2(evaluator._N) if evaluator._N > 1 else 1.0
+        current_bits = metrics.get(f"{prefix}/known", 0.0)
 
         if self._prev_bits_known is not None:
             delta_bits = current_bits - self._prev_bits_known
-            metrics[f"{prefix}/delta_bits"] = float(delta_bits)
+            metrics[f"{prefix}/delta"] = float(delta_bits)
 
             # Compute bits per episode if we know episodes_per_eval
             episodes_per_eval = self._builder._episodes_per_eval
             if episodes_per_eval is not None and episodes_per_eval > 0:
                 bits_per_episode = delta_bits / episodes_per_eval
-                metrics[f"{prefix}/bits_per_episode"] = float(bits_per_episode)
-
-            # Flag whether we're in the "active learning" regime
-            # (not noise at start, not saturated at end)
-            is_learning = delta_bits > 0.01  # threshold for noise
-            is_saturated = current_bits > 0.95 * signal_bits
-            metrics[f"{prefix}/in_learning_regime"] = float(is_learning and not is_saturated)
+                metrics[f"{prefix}/per_episode"] = float(bits_per_episode)
 
         self._prev_bits_known = current_bits
-        self._eval_count += 1
-        metrics[f"{prefix}/eval_count"] = float(self._eval_count)
-        metrics[f"{prefix}/signal_bits"] = float(signal_bits)
-
         return metrics
 
 
