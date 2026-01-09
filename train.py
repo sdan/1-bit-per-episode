@@ -34,6 +34,7 @@ class Config:
     reward_type: str = "binary"
     reward_bins: int | None = None
     fixed_secret: int | None = None
+    resample_secret: bool = False
     use_standard_prefix: bool = False
     env_type: Literal["single_step", "multi_step"] = "single_step"
 
@@ -89,6 +90,7 @@ def build_config(cli: Config) -> train.Config:
             n_batches=cli.n_batches,
             test_n_batches=cli.test_n_batches,
             fixed_secret=cli.fixed_secret,
+            resample_secret=cli.resample_secret,
             convo_prefix=prefix,
             seed=cli.dataset_seed,
         )
@@ -102,6 +104,7 @@ def build_config(cli: Config) -> train.Config:
             n_batches=cli.n_batches,
             test_n_batches=cli.test_n_batches,
             fixed_secret=cli.fixed_secret,
+            resample_secret=cli.resample_secret,
             convo_prefix=prefix,
             seed=cli.dataset_seed,
         )
@@ -133,10 +136,13 @@ def build_config(cli: Config) -> train.Config:
     )
     if cli.eval_bits:
         # Use the builder pattern - evaluator is created once and caches inputs
+        # episodes_per_eval = eval_every batches * batch_size problems * group_size episodes
+        episodes_per_eval = cli.eval_every * cli.batch_size * cli.group_size
         bits_builder = BitsKnownEvaluatorBuilder(
             dataset_builder=builder,
             env_type=cli.env_type,
             metric_prefix="test/bits",
+            episodes_per_eval=episodes_per_eval,
         )
         evaluator_builders.append(bits_builder)
 
@@ -179,7 +185,13 @@ async def run(cli: Config) -> None:
 
     logger.info(f"Environment: {cli.env_type}, N={cli.N} ({entropy_bits:.2f} bits)")
     logger.info(f"Channel: {channel_desc}")
-    logger.info(f"Secret: {cli.fixed_secret if cli.fixed_secret is not None else 'Random'}")
+    if cli.fixed_secret is not None:
+        secret_desc = str(cli.fixed_secret)
+    elif cli.resample_secret:
+        secret_desc = "Random (resampled)"
+    else:
+        secret_desc = "Random (fixed per run)"
+    logger.info(f"Secret: {secret_desc}")
     logger.info(f"Init checkpoint: {config.load_checkpoint_path or 'Base model'}")
     logger.info(f"Batches: {cli.n_batches} × {cli.batch_size} × {cli.group_size}")
     logger.info(f"Log path: {config.log_path}")

@@ -204,10 +204,12 @@ class BitsKnownEvaluatorBuilder:
         dataset_builder,
         env_type: Literal["single_step", "multi_step"],
         metric_prefix: str = "bits",
+        episodes_per_eval: int | None = None,
     ):
         self._dataset_builder = dataset_builder
         self._env_type = env_type
         self._metric_prefix = metric_prefix
+        self._episodes_per_eval = episodes_per_eval
         self._evaluator: BitsKnownEvaluator | None = None
         self._dataset = None
 
@@ -231,18 +233,52 @@ class BitsKnownEvaluatorBuilder:
 
 
 class _AsyncBitsKnownEvaluator(SamplingClientEvaluator):
-    """Wrapper that handles async evaluator initialization.
+    """Wrapper that handles async evaluator initialization and tracks learning rate.
 
     This is needed because evaluator_builders are called synchronously,
     but dataset creation is async.
+
+    Also tracks bits_known history to compute effective_bits_per_episode,
+    which is the key metric for comparing against theoretical predictions.
     """
 
     def __init__(self, builder: BitsKnownEvaluatorBuilder):
         self._builder = builder
+        # State for computing effective rate
+        self._prev_bits_known: float | None = None
+        self._eval_count: int = 0
 
     async def __call__(self, sampling_client: tinker.SamplingClient) -> dict[str, float]:
         evaluator = await self._builder._ensure_evaluator()
-        return await evaluator(sampling_client)
+        metrics = await evaluator(sampling_client)
+
+        # Compute effective bits per episode (learning rate)
+        prefix = self._builder._metric_prefix.rstrip("/")
+        current_bits = metrics.get(f"{prefix}/known_clamped_mean", 0.0)
+        signal_bits = math.log2(evaluator._N) if evaluator._N > 1 else 1.0
+
+        if self._prev_bits_known is not None:
+            delta_bits = current_bits - self._prev_bits_known
+            metrics[f"{prefix}/delta_bits"] = float(delta_bits)
+
+            # Compute bits per episode if we know episodes_per_eval
+            episodes_per_eval = self._builder._episodes_per_eval
+            if episodes_per_eval is not None and episodes_per_eval > 0:
+                bits_per_episode = delta_bits / episodes_per_eval
+                metrics[f"{prefix}/bits_per_episode"] = float(bits_per_episode)
+
+            # Flag whether we're in the "active learning" regime
+            # (not noise at start, not saturated at end)
+            is_learning = delta_bits > 0.01  # threshold for noise
+            is_saturated = current_bits > 0.95 * signal_bits
+            metrics[f"{prefix}/in_learning_regime"] = float(is_learning and not is_saturated)
+
+        self._prev_bits_known = current_bits
+        self._eval_count += 1
+        metrics[f"{prefix}/eval_count"] = float(self._eval_count)
+        metrics[f"{prefix}/signal_bits"] = float(signal_bits)
+
+        return metrics
 
 
 def _build_messages(
