@@ -39,7 +39,7 @@ MULTI_STEP_CHECKPOINT = "tinker://1e79325e-97ad-5cfc-aae3-fdc7b5951746:train:0/w
 # Sweep hyperparameters (match bash script defaults)
 MODEL = "meta-llama/Llama-3.1-8B"
 SEEDS = [0, 1, 2]
-NS = [16, 64, 256, 1024, 4096]  # 5 points, log-spaced
+NS = [16, 64, 128, 256, 1024, 4096]  # 6 points, log-spaced (128 added as sanity check)
 BS = [2, "cont", 4, 8, 16, 32]  # B=2 uses binary (1 bit); "cont" uses log_distance (∞ bits); others use binned
 GROUP_SIZE = 4
 
