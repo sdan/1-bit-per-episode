@@ -34,7 +34,6 @@ class Config:
     reward_type: str = "binary"
     reward_bins: int | None = None
     fixed_secret: int | None = None
-    resample_secret: bool = False
     use_standard_prefix: bool = False
     env_type: Literal["single_step", "multi_step"] = "single_step"
 
@@ -90,7 +89,6 @@ def build_config(cli: Config) -> train.Config:
             n_batches=cli.n_batches,
             test_n_batches=cli.test_n_batches,
             fixed_secret=cli.fixed_secret,
-            resample_secret=cli.resample_secret,
             convo_prefix=prefix,
             seed=cli.dataset_seed,
         )
@@ -104,7 +102,6 @@ def build_config(cli: Config) -> train.Config:
             n_batches=cli.n_batches,
             test_n_batches=cli.test_n_batches,
             fixed_secret=cli.fixed_secret,
-            resample_secret=cli.resample_secret,
             convo_prefix=prefix,
             seed=cli.dataset_seed,
         )
@@ -185,12 +182,7 @@ async def run(cli: Config) -> None:
 
     logger.info(f"Environment: {cli.env_type}, N={cli.N} ({entropy_bits:.2f} bits)")
     logger.info(f"Channel: {channel_desc}")
-    if cli.fixed_secret is not None:
-        secret_desc = str(cli.fixed_secret)
-    elif cli.resample_secret:
-        secret_desc = "Random (resampled)"
-    else:
-        secret_desc = "Random (fixed per run)"
+    secret_desc = str(cli.fixed_secret) if cli.fixed_secret is not None else "Random (fixed per run)"
     logger.info(f"Secret: {secret_desc}")
     logger.info(f"Init checkpoint: {config.load_checkpoint_path or 'Base model'}")
     logger.info(f"Batches: {cli.n_batches} × {cli.batch_size} × {cli.group_size}")

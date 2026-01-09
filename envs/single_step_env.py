@@ -161,6 +161,7 @@ class SingleStepDataset(RLDataset):
             validate_secret(fixed_secret, N)
             self.fixed_secret = int(fixed_secret)
         elif split == "train":
+            # Always fix the secret per run for the core experiment
             self.fixed_secret = int(self._rng.randint(0, N))
         else:
             self.fixed_secret = None
