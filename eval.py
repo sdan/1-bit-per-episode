@@ -1,3 +1,4 @@
+import asyncio
 import math
 from dataclasses import dataclass
 from typing import Literal
@@ -124,11 +125,12 @@ class BitsKnownEvaluator(SamplingClientEvaluator):
     async def __call__(self, sampling_client: tinker.SamplingClient) -> dict[str, float]:
         """Compute bits_known metrics using precomputed inputs."""
 
-        # Compute logprobs for all unique secrets
-        all_logprobs = [
-            await sampling_client.compute_logprobs_async(inp.model_input)
+        # Parallel logprob computation - submit all requests before awaiting any
+        # This maximizes clock cycle efficiency per tinker docs
+        all_logprobs = await asyncio.gather(*[
+            sampling_client.compute_logprobs_async(inp.model_input)
             for inp in self._eval_inputs
-        ]
+        ])
 
         # Compute bits metrics
         bits_raw = []
